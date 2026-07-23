@@ -145,7 +145,7 @@ uint8_t Electroniccats_PN7150::writeData(uint8_t txBuffer[],
   nmbrBytesWritten =
       _wire->write(txBuffer, (size_t)(txBufferLevel)); // carga en buffer
 #ifdef DEBUG2
-  Serial.printf("\nWrite: ", nmbrBytesWritten);
+  Serial.printf("\nWrite: (%u) ", nmbrBytesWritten);
   for (int i = 0; i < nmbrBytesWritten; i++) {
     Serial.printf("%02x ", txBuffer[i]);
   }
