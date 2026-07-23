@@ -145,13 +145,17 @@ uint8_t Electroniccats_PN7150::writeData(uint8_t txBuffer[],
   nmbrBytesWritten =
       _wire->write(txBuffer, (size_t)(txBufferLevel)); // carga en buffer
 #ifdef DEBUG2
-  Serial.println("[DEBUG] written bytes = 0x" + String(nmbrBytesWritten, HEX));
+  Serial.printf("\nWrite: ", nmbrBytesWritten);
+  for (int i = 0; i < nmbrBytesWritten; i++) {
+    Serial.printf("%02x ", txBuffer[i]);
+  }
 #endif
   if (nmbrBytesWritten == txBufferLevel) {
     byte resultCode;
     resultCode = _wire->endTransmission(); // envio de datos segun yo
 #ifdef DEBUG2
-    Serial.println("[DEBUG] write data code = 0x" + String(resultCode, HEX));
+    Serial.printf(" Result code %02x\n", resultCode);
+    // Serial.println("[DEBUG] write data code = 0x" + String(resultCode, HEX));
 #endif
     return resultCode;
   } else {
@@ -169,16 +173,13 @@ uint32_t Electroniccats_PN7150::readData(uint8_t rxBuffer[]) const {
                                   // how long the payload will be
 // Imprimir datos de bytes received, tratar de extraer con funcion read
 // Leer e inyectar directo al buffer los siguientes 3
-#ifdef DEBUG2
-    Serial.println("[DEBUG] bytesReceived = 0x" + String(bytesReceived, HEX));
-#endif
     rxBuffer[0] = _wire->read();
     rxBuffer[1] = _wire->read();
     rxBuffer[2] = _wire->read();
 #ifdef DEBUG2
+    Serial.print("Read: ");
     for (int i = 0; i < 3; i++) {
-      Serial.println("[DEBUG] Byte[" + String(i) + "] = 0x" +
-                     String(rxBuffer[i], HEX));
+      Serial.printf("%02x ", rxBuffer[i]);
     }
 #endif
     uint8_t payloadLength = rxBuffer[2];
@@ -186,19 +187,17 @@ uint32_t Electroniccats_PN7150::readData(uint8_t rxBuffer[]) const {
       bytesReceived += _wire->requestFrom(
           _I2Caddress,
           (uint8_t)payloadLength); // then reading the payload, if any
-#ifdef DEBUG2
-      Serial.println("[DEBUG] payload bytes = 0x" +
-                     String(bytesReceived - 3, HEX));
-#endif
       uint32_t index = 3;
       while (index < bytesReceived) {
         rxBuffer[index] = _wire->read();
 #ifdef DEBUG2
-        Serial.println("[DEBUG] payload[" + String(index) + "] = 0x" +
-                       String(rxBuffer[index], HEX));
+        Serial.printf("%02x ", rxBuffer[index]);
 #endif
         index++;
       }
+#ifdef DEBUG2
+      Serial.println();
+#endif
       index = 0;
     }
   } else {
@@ -232,15 +231,23 @@ uint8_t Electroniccats_PN7150::connectNCI() {
   //_wire->setSCL(1);  // GPIO 1 como SCL
 
   // Open connection to NXPNCI
-  _wire->begin();
+  //_wire->begin();
   if (_VENpin != 255) {
+#ifdef DEBUG
+    Serial.printf("Setting up pin %u as VEN\n", _VENpin);
+#endif
     digitalWrite(_VENpin, HIGH);
     delay(1);
     digitalWrite(_VENpin, LOW);
     delay(1);
     digitalWrite(_VENpin, HIGH);
     delay(3);
+#ifdef DEBUG
+  } else {
+    Serial.println("No VEN pin");
+#endif
   }
+
 
   // Loop until NXPNCI answers
   while (wakeupNCI() != SUCCESS) {
@@ -287,12 +294,18 @@ uint8_t Electroniccats_PN7150::connectNCI() {
     getMessage(15);
     getMessage(15);
     getMessage(15);
-
+    
+#ifdef DEBUG2
+    Serial.println("Sending PN7160 core init");
+#endif
     (void)writeData(NCICoreInit_PN7160, sizeof(NCICoreInit_PN7160));
+
     getMessage(150);
 
-    if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x01) || (rxBuffer[3] != 0x00))
+    if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x01) || (rxBuffer[3] != 0x00)) {
+      Serial.println("ERROR Unexpected response");
       return ERROR;
+    }
   }
 
   return SUCCESS;
@@ -426,6 +439,9 @@ uint8_t Electroniccats_PN7150::ConfigMode(uint8_t modeSE) {
 
 uint8_t Electroniccats_PN7150::configMode() {
   int mode = Electroniccats_PN7150::getMode();
+#ifdef DEBUG
+  Serial.printf("Setting mode to %u\n", mode);
+#endif
   return Electroniccats_PN7150::ConfigMode(mode);
 }
 
@@ -623,7 +639,7 @@ bool Electroniccats_PN7150::configureSettings(void) {
 
 #if (NXP_TVDD_CONF | NXP_RF_CONF)
   uint8_t *NxpNci_CONF;
-  uint16_t NxpNci_CONF_size = 0;
+  uint16_t NxpNci_CONF_size = 1;
 #endif
 #if (NXP_CORE_CONF_EXTN | NXP_CLK_CONF | NXP_TVDD_CONF | NXP_RF_CONF)
   uint8_t currentTS[32] = __TIMESTAMP__;
@@ -637,16 +653,24 @@ bool Electroniccats_PN7150::configureSettings(void) {
   if (sizeof(NxpNci_CORE_CONF) != 0) {
     isResetRequired = true;
 
-    if (_chipModel == PN7150)
+    if (_chipModel == PN7150) {
+#ifdef DEBUG
+      Serial.println("Sending CORE_CONF for PN7150");
+#endif
       (void)writeData(NxpNci_CORE_CONF, sizeof(NxpNci_CORE_CONF));
-    else if (_chipModel == PN7160)
+    }
+    else if (_chipModel == PN7160) {
+#ifdef DEBUG
+      Serial.println("Sending CORE_CONF for PN7160");
+#endif
       (void)writeData(NxpNci_CORE_CONF_3rdGen, sizeof(NxpNci_CORE_CONF_3rdGen));
+    }
 
     getMessage(10);
     if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x02) ||
         (rxBuffer[3] != 0x00) || (rxBuffer[4] != 0x00)) {
 #ifdef DEBUG
-      Serial.println("NxpNci_CORE_CONF");
+      Serial.println("NxpNci_CORE_CONF failed");
 #endif
       return ERROR;
     }
@@ -655,12 +679,15 @@ bool Electroniccats_PN7150::configureSettings(void) {
 
 #if NXP_CORE_STANDBY
   if (sizeof(NxpNci_CORE_STANDBY) != 0) {
+#ifdef DEBUG
+    Serial.println("Sending CORE_STANDBY");
+#endif
     (void)(writeData(NxpNci_CORE_STANDBY, sizeof(NxpNci_CORE_STANDBY)));
     getMessage(10);
     if ((rxBuffer[0] != 0x4F) || (rxBuffer[1] != 0x00) ||
         (rxBuffer[3] != 0x00)) {
 #ifdef DEBUG
-      Serial.println("NxpNci_CORE_STANDBY");
+      Serial.println("NxpNci_CORE_STANDBY failed");
 #endif
       return ERROR;
     }
@@ -675,6 +702,9 @@ bool Electroniccats_PN7150::configureSettings(void) {
   /* First read timestamp stored in NFC Controller */
   if (gNfcController_generation == 1)
     NCIReadTS[5] = 0x0F;
+#ifdef DEBUG
+    Serial.println("Sending NCIReadTS");
+#endif
   (void)writeData(NCIReadTS, sizeof(NCIReadTS));
   getMessage(10);
   if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x03) || (rxBuffer[3] != 0x00)) {
@@ -696,18 +726,25 @@ bool Electroniccats_PN7150::configureSettings(void) {
   /* Apply settings */
 #if NXP_CORE_CONF_EXTN
   if (sizeof(NxpNci_CORE_CONF_EXTN) != 0) {
-
-    if (_chipModel == PN7150)
+    if (_chipModel == PN7150) {
+#ifdef DEBUG
+    Serial.println("Sending CORE_CONF_EXTN for PN7150");
+#endif
       (void)writeData(NxpNci_CORE_CONF_EXTN, sizeof(NxpNci_CORE_CONF_EXTN));
-    else if (_chipModel == PN7160)
+    }
+    else if (_chipModel == PN7160) {
+#ifdef DEBUG
+    Serial.println("Sending CORE_CONF_EXTN for PN7160");
+#endif
       (void)writeData(NxpNci_CORE_CONF_EXTN_3rdGen,
                       sizeof(NxpNci_CORE_CONF_EXTN_3rdGen));
+    }
 
     getMessage(10);
     if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x02) ||
         (rxBuffer[3] != 0x00) || (rxBuffer[4] != 0x00)) {
 #ifdef DEBUG
-      Serial.println("NxpNci_CORE_CONF_EXTN");
+      Serial.println("NxpNci_CORE_CONF_EXTN failed");
 #endif
       return ERROR;
     }
@@ -717,7 +754,9 @@ bool Electroniccats_PN7150::configureSettings(void) {
 #if NXP_CLK_CONF
   if (sizeof(NxpNci_CLK_CONF) != 0) {
     isResetRequired = true;
-
+#ifdef DEBUG
+    Serial.println("Sending CLK_CONF");
+#endif
     (void)writeData(NxpNci_CLK_CONF, sizeof(NxpNci_CLK_CONF));
     getMessage(10);
     // NxpNci_HostTransceive(NxpNci_CLK_CONF, sizeof(NxpNci_CLK_CONF), Answer,
@@ -725,7 +764,7 @@ bool Electroniccats_PN7150::configureSettings(void) {
     if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x02) ||
         (rxBuffer[3] != 0x00) || (rxBuffer[4] != 0x00)) {
 #ifdef DEBUG
-      Serial.println("NxpNci_CLK_CONF");
+      Serial.println("NxpNci_CLK_CONF failed");
 #endif
       return ERROR;
     }
@@ -734,15 +773,23 @@ bool Electroniccats_PN7150::configureSettings(void) {
 
 #if NXP_TVDD_CONF
   if (NxpNci_CONF_size != 0) {
-    if (_chipModel == PN7150)
+    if (_chipModel == PN7150) {
+#ifdef DEBUG
+    Serial.println("Sending TVDD_CONF for PN7150");
+#endif
       (void)writeData(NxpNci_TVDD_CONF_2ndGen, sizeof(NxpNci_TVDD_CONF_2ndGen));
-    else if (_chipModel == PN7160)
+    }
+    else if (_chipModel == PN7160) {
+#ifdef DEBUG
+    Serial.println("Sending TVDD_CONF for PN7160");
+#endif
       (void)writeData(NxpNci_TVDD_CONF_3rdGen, sizeof(NxpNci_TVDD_CONF_3rdGen));
+    }
     getMessage(10);
     if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x02) ||
         (rxBuffer[3] != 0x00) || (rxBuffer[4] != 0x00)) {
 #ifdef DEBUG
-      Serial.println("NxpNci_CONF_size");
+      Serial.println("NxpNci_CONF_size failed");
 #endif
       return ERROR;
     }
@@ -752,16 +799,24 @@ bool Electroniccats_PN7150::configureSettings(void) {
 #if NXP_RF_CONF
   if (NxpNci_CONF_size != 0) {
 
-    if (_chipModel == PN7150)
+    if (_chipModel == PN7150) {
+#ifdef DEBUG
+    Serial.println("Sending RF_CONF for PN7150");
+#endif
       (void)writeData(NxpNci_RF_CONF_2ndGen, sizeof(NxpNci_RF_CONF_2ndGen));
-    else if (_chipModel == PN7160)
+    }
+    else if (_chipModel == PN7160) {
+#ifdef DEBUG
+    Serial.println("Sending RF_CONF for PN7160");
+#endif
       (void)writeData(NxpNci_RF_CONF_3rdGen, sizeof(NxpNci_RF_CONF_3rdGen));
+    }
 
     getMessage(10);
     if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x02) ||
         (rxBuffer[3] != 0x00) || (rxBuffer[4] != 0x00)) {
 #ifdef DEBUG
-      Serial.println("NxpNci_CONF_size");
+      Serial.println("NxpNci_RF_CONF failed");
 #endif
       return ERROR;
     }
@@ -773,6 +828,9 @@ bool Electroniccats_PN7150::configureSettings(void) {
     /* Store curent timestamp to NFC Controller memory for further checks */
     if (gNfcController_generation == 1)
       NCIWriteTS[5] = 0x0F;
+#ifdef DEBUG
+    Serial.println("Setting timestamp on PN7150");
+#endif
     memcpy(&NCIWriteTS[7], currentTS, sizeof(currentTS));
     (void)writeData(NCIWriteTS, sizeof(NCIWriteTS));
     getMessage(10);
@@ -788,6 +846,9 @@ bool Electroniccats_PN7150::configureSettings(void) {
 
   if (isResetRequired) {
     /* Reset the NFC Controller to insure new settings apply */
+#ifdef DEBUG
+    Serial.println("Sending CORE RESET");
+#endif
     (void)writeData(NCICoreReset, sizeof(NCICoreReset));
     getMessage();
     if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x00) ||
@@ -799,10 +860,16 @@ bool Electroniccats_PN7150::configureSettings(void) {
     }
 
     if (_chipModel == PN7150) {
+#ifdef DEBUG
+    Serial.println("Sending CoreInit for PN7150");
+#endif
       (void)writeData(NCICoreInit, sizeof(NCICoreInit));
       getMessage();
     } else if (_chipModel == PN7160) {
       getMessage(15);
+#ifdef DEBUG
+    Serial.println("Sending CoreInit for PN7160");
+#endif
       (void)writeData(NCICoreInit_2_0, sizeof(NCICoreInit_2_0));
       getMessage();
     }
@@ -1025,7 +1092,7 @@ bool Electroniccats_PN7150::configureSettings(uint8_t *uidcf, uint8_t uidlen) {
 
 #if (NXP_TVDD_CONF | NXP_RF_CONF)
   uint8_t *NxpNci_CONF;
-  uint16_t NxpNci_CONF_size = 0;
+  uint16_t NxpNci_CONF_size = 1;
 #endif
 #if (NXP_CORE_CONF_EXTN | NXP_CLK_CONF | NXP_TVDD_CONF | NXP_RF_CONF)
   uint8_t currentTS[32] = __TIMESTAMP__;
@@ -1148,7 +1215,7 @@ bool Electroniccats_PN7150::configureSettings(uint8_t *uidcf, uint8_t uidlen) {
     if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x02) ||
         (rxBuffer[3] != 0x00) || (rxBuffer[4] != 0x00)) {
 #ifdef DEBUG
-      Serial.println("NxpNci_CONF_size");
+      Serial.println("NxpNci_CONF_TVDD");
 #endif
       return ERROR;
     }
@@ -1167,7 +1234,7 @@ bool Electroniccats_PN7150::configureSettings(uint8_t *uidcf, uint8_t uidlen) {
     if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x02) ||
         (rxBuffer[3] != 0x00) || (rxBuffer[4] != 0x00)) {
 #ifdef DEBUG
-      Serial.println("NxpNci_CONF_size");
+      Serial.println("NxpNci_CONF_RF");
 #endif
       return ERROR;
     }
@@ -1255,6 +1322,9 @@ uint8_t Electroniccats_PN7150::StartDiscovery(uint8_t modeSE) {
   }
 
   NCIStartDiscovery_length = (TechTabSize * 2) + 4;
+#ifdef DEBUG
+    Serial.println("Sending StartDiscovery");
+#endif
   (void)writeData(NCIStartDiscovery, NCIStartDiscovery_length);
   getMessage();
 
@@ -1271,7 +1341,9 @@ uint8_t Electroniccats_PN7150::startDiscovery() {
 
 bool Electroniccats_PN7150::stopDiscovery() {
   uint8_t NCIStopDiscovery[] = {0x21, 0x06, 0x01, 0x00};
-
+#ifdef DEBUG
+    Serial.println("Sending StopDiscovery");
+#endif
   (void)writeData(NCIStopDiscovery, sizeof(NCIStopDiscovery));
   getMessage(10);
 
@@ -1303,6 +1375,9 @@ wait:
             ((rxBuffer[1] != 0x05) && (rxBuffer[1] != 0x03))) &&
            (getFlag == true));
   gNextTag_Protocol = PROT_UNDETERMINED;
+#ifdef DEBUG
+  Serial.printf("Proceeding with rxbuffer: %02x %02x %02x %02x...\n", rxBuffer[0], rxBuffer[1], rxBuffer[2], rxBuffer[3]);
+#endif
 
   /* Is RF_INTF_ACTIVATED_NTF ? */
   if (rxBuffer[1] == 0x05) {
