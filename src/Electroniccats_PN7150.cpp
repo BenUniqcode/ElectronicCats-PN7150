@@ -1524,7 +1524,6 @@ bool Electroniccats_PN7150::isTagDetected(uint16_t tout) {
 
 bool Electroniccats_PN7150::cardModeSend(unsigned char *pData,
                                          unsigned char DataSize) {
-  bool status;
   uint8_t Cmd[MAX_NCI_FRAME_SIZE];
 
   /* Compute and send DATA_PACKET */
@@ -1533,7 +1532,7 @@ bool Electroniccats_PN7150::cardModeSend(unsigned char *pData,
   Cmd[2] = DataSize;
   memcpy(&Cmd[3], pData, DataSize);
   (void)writeData(Cmd, DataSize + 3);
-  return status;
+  return SUCCESS;
 }
 
 // Deprecated, use cardModeSend() instead
