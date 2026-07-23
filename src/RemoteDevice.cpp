@@ -202,8 +202,7 @@ unsigned char RemoteDevice::getBitRate() const {
   case (tech.PASSIVE_NFCB):
   case (tech.PASSIVE_NFCV):
   default:
-    return NULL;
-    break;
+    return 0;
   }
 }
 
