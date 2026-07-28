@@ -1531,8 +1531,8 @@ bool Electroniccats_PN7150::cardModeSend(unsigned char *pData,
   Cmd[1] = 0x00;
   Cmd[2] = DataSize;
   memcpy(&Cmd[3], pData, DataSize);
-  (void)writeData(Cmd, DataSize + 3);
-  return SUCCESS;
+  bool status = writeData(Cmd, DataSize + 3);
+  return status;
 }
 
 // Deprecated, use cardModeSend() instead
