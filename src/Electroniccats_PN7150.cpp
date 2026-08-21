@@ -1878,9 +1878,25 @@ bool Electroniccats_PN7150::readerTagCmd(unsigned char *pCommand,
   Cmd[2] = CommandSize;
   memcpy(&Cmd[3], pCommand, CommandSize);
 
-  (void)writeData(Cmd, CommandSize + 3);
-  getMessage();
-  getMessage(1000);
+  uint8_t writeResult = writeData(Cmd, CommandSize + 3);
+  if (writeResult) {
+    Serial.printf("writeData failed with %u\n", writeResult);
+    return status;
+  }
+
+  if (!getMessage()) {
+    Serial.printf("First getMessage failed\n");
+    return status;
+  }
+  // BW: An extra delay appears to be necessary here to prevent
+  // this failing and, sometimes, causing a crash
+  delay(1);
+  
+  if (!getMessage(3000)) {
+    Serial.printf("Second getMessage failed\n");
+    return status;
+  }                                          
+
   /* Wait for Answer 1S */
 
 #ifdef DEBUG2
