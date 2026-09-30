@@ -89,32 +89,61 @@ void Electroniccats_PN7150::setTimeOut(unsigned long theTimeOut) {
 
 uint8_t Electroniccats_PN7150::wakeupNCI() { // the device has to wake up using
                                              // a core reset
+#ifdef DEBUG
+    Serial.printf("[%lu] wakeupNCI\n", millis());
+#endif
   uint8_t NCICoreReset[] = {0x20, 0x00, 0x01, 0x01};
   uint16_t NbBytes = 0;
 
   // Reset RF settings restauration flag
   (void)writeData(NCICoreReset, 4);
-  getMessage(15);
+  // BW: In my tests, this response takes 31ms. The original timeout of 15ms was not enough.
+  // Better to wait a bit longer here, rather than fail the whole thing and try again in 500ms!
+  getMessage(50); 
   NbBytes = rxMessageLength;
   if ((NbBytes == 0) || (rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x00)) {
+#ifdef DEBUG2
+    if (NbBytes == 0)
+    {
+      Serial.printf("[%lu] No response to NCICoreReset\n", millis());
+    }
+    else
+    {
+      Serial.printf("[%lu] Got response but contents are wrong: %02x %02x\n", millis(), rxBuffer[0], rxBuffer[1]);
+    }
+#endif
     return ERROR;
   }
-  getMessage();
+#ifdef DEBUG2
+    Serial.printf("[%lu] Got RSP packet\n", millis());
+#endif
+
+  getMessage(50); 
   NbBytes = rxMessageLength;
-  if (NbBytes != 0) {
+  if (NbBytes == 0) {
+#ifdef DEBUG2
+      Serial.printf("[%lu] CORE_RESET_NTF not received\n", millis());
+      return ERROR;
+#endif
+  } else {
     // NCI_PRINT_BUF("NCI << ", Answer, NbBytes);
     //  Is CORE_GENERIC_ERROR_NTF ?
     if ((rxBuffer[0] == 0x60) && (rxBuffer[1] == 0x07)) {
       /* Is PN7150B0HN/C11004 Anti-tearing recovery procedure triggered ? */
       // if ((rxBuffer[3] == 0xE6)) gRfSettingsRestored_flag = true;
-    } else {
       return ERROR;
+    } else if (rxBuffer[0] == 0x60 && rxBuffer[1] == 0x00) {
+      // CORE_RESET_NTF
+#ifdef DEBUG2
+      Serial.printf("[%lu] CORE_RESET_NTF received\n", millis());
+#endif
+      return SUCCESS;
     }
   }
 #ifdef DEBUG2
-  Serial.println("WAKEUP NCI RESET SUCCESS");
+      Serial.printf("[%lu] Unexpected packet received: %02x %02x\n", millis(), rxBuffer[0], rxBuffer[1]);
 #endif
-  return SUCCESS;
+  return ERROR;
 }
 
 bool Electroniccats_PN7150::getMessage(
@@ -145,7 +174,7 @@ uint8_t Electroniccats_PN7150::writeData(uint8_t txBuffer[],
   nmbrBytesWritten =
       _wire->write(txBuffer, (size_t)(txBufferLevel)); // carga en buffer
 #ifdef DEBUG2
-  Serial.printf("\nWrite: (%u) ", nmbrBytesWritten);
+  Serial.printf("\n[%lu] Write: (%u) ", millis(), nmbrBytesWritten);
   for (int i = 0; i < nmbrBytesWritten; i++) {
     Serial.printf("%02x ", txBuffer[i]);
   }
@@ -176,13 +205,13 @@ uint32_t Electroniccats_PN7150::readData(uint8_t rxBuffer[]) const {
     rxBuffer[0] = _wire->read();
     rxBuffer[1] = _wire->read();
     rxBuffer[2] = _wire->read();
+    uint8_t payloadLength = rxBuffer[2];
 #ifdef DEBUG2
-    Serial.print("Read: ");
+    Serial.printf("[%lu] Read: (%u) ", millis(), bytesReceived + payloadLength);
     for (int i = 0; i < 3; i++) {
       Serial.printf("%02x ", rxBuffer[i]);
     }
 #endif
-    uint8_t payloadLength = rxBuffer[2];
     if (payloadLength > 0) {
       bytesReceived += _wire->requestFrom(
           _I2Caddress,
@@ -216,7 +245,9 @@ int Electroniccats_PN7150::getFirmwareVersion() {
 int Electroniccats_PN7150::GetFwVersion() { return getFirmwareVersion(); }
 
 uint8_t Electroniccats_PN7150::connectNCI() {
-  uint8_t i = 2;
+#ifdef DEBUG
+    Serial.printf("[%lu] connectNCI\n", millis());
+#endif
   uint8_t NCICoreInit_PN7150[] = {0x20, 0x01, 0x00};
   uint8_t NCICoreInit_PN7160[] = {0x20, 0x01, 0x02, 0x00, 0x00};
 
@@ -248,12 +279,14 @@ uint8_t Electroniccats_PN7150::connectNCI() {
 #endif
   }
 
-
   // Loop until NXPNCI answers
+  uint8_t i = 5;
   while (wakeupNCI() != SUCCESS) {
+    Serial.printf("[%lu] wakeupNCI failed\n", millis());
     if (i-- == 0)
       return ERROR;
     delay(500);
+    Serial.printf("[%lu] Retrying wakeupNCI with %d attempts remaining\n", millis(), i);
   }
 
   if (_chipModel == PN7150) {
@@ -261,6 +294,9 @@ uint8_t Electroniccats_PN7150::connectNCI() {
     Serial.println("CHIP MODEL - PN7150");
 #endif
 
+#ifdef DEBUG2
+    Serial.println("Sending PN7160 core init");
+#endif
     (void)writeData(NCICoreInit_PN7150, sizeof(NCICoreInit_PN7150));
     getMessage();
     if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x01) || (rxBuffer[3] != 0x00))
@@ -289,18 +325,24 @@ uint8_t Electroniccats_PN7150::connectNCI() {
   } else if (_chipModel == PN7160) {
 #ifdef DEBUG2
     Serial.println("CHIP MODEL - PN7160 ");
+    Serial.println("Waiting for 3 messages");
 #endif
 
-    getMessage(15);
-    getMessage(15);
-    getMessage(15);
+    bool ret;
+    ret = getMessage(15);
+    if (!ret) Serial.println("No response");
+    ret = getMessage(15);
+    if (!ret) Serial.println("No response");
+    ret = getMessage(15);
+    if (!ret) Serial.println("No response");
     
 #ifdef DEBUG2
     Serial.println("Sending PN7160 core init");
 #endif
     (void)writeData(NCICoreInit_PN7160, sizeof(NCICoreInit_PN7160));
 
-    getMessage(150);
+    ret = getMessage(150);
+    if (!ret) Serial.println("No response");
 
     if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x01) || (rxBuffer[3] != 0x00)) {
       Serial.println("ERROR Unexpected response");
