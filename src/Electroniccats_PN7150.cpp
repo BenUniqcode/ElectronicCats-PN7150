@@ -234,12 +234,12 @@ uint8_t Electroniccats_PN7150::connectNCI() {
   //_wire->begin();
   if (_VENpin != 255) {
 #ifdef DEBUG
-    Serial.printf("Setting up pin %u as VEN\n", _VENpin);
+    Serial.printf("[%lu] Setting up pin %u as VEN\n", millis(), _VENpin);
 #endif
-    digitalWrite(_VENpin, HIGH);
-    delay(1);
-    digitalWrite(_VENpin, LOW);
-    delay(1);
+    // digitalWrite(_VENpin, HIGH);
+    // delay(1);
+    // digitalWrite(_VENpin, LOW);
+    // delay(1);
     digitalWrite(_VENpin, HIGH);
     delay(3);
 #ifdef DEBUG
